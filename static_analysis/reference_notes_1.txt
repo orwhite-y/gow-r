@@ -1,0 +1,78 @@
+﻿这个是仅作参考 具体是什么 要分析 
+    .wad	资产清单 + mesh/rig 定义	目录 + 小文件
+    .lodpack	网格顶点/索引缓冲(分 LOD)	模型数据仓库
+    .texpack	贴图像素(GNF 格式)	贴图仓库
+    .toc	texpack 的目录索引	仓库的货架清单
+    .shaderpack	预编译着色器	独立的着色器仓库(此工具不处理)
+
+一、IDA 注释（14个有意义的函数地址）
+地址	功能	验证方式
+0x140391140	DISPATCH 分发器：v3=(u8)type_code，从 TLS[TlsIndex+4464+8*v3] 取 handler，调 vtable+120(handler_obj, entry, type, data_ptr)	frida 确认 type→handler 映射
+0x140393070	WAD 单条目加载器：调 WTOC parser，entry+120=data_buf，vtable+72 读数据。数据 RAW 无解码	IDA 静态 + frida
+0x140393910	Read callback 1：interlocked exchange 通知，无数据处理	IDA 静态
+0x140393940	Read callback：memcpy(entry+120, read_buf, entry+4_size)。纯拷贝，无解码	IDA 静态
+0x140393e20	WAD 多条目处理器：WTOC parser + sub_140393C00(alloc)。144B 条目迭代。无解码，原始数据直接拷贝	IDA 静态 + frida
+0x1403a15f0	注册 lodpack + 预缓存：ctx+283424 存 lodpack	IDA 静态
+0x1403a1820	运行时 lodpack 查找：(ctx, out, group, &hash)	IDA 静态
+0x1403a1dd0	Lodpack TOC 加载器：构建 .lodpack.toc 路径(type 7)	IDA 静态
+0x1403b2550	WAD resource handler vtable 初始化。Vtable at qword_143AC6ED0	IDA 静态
+0x1403b3980	WTOC parser：读 64B header + 144B entry table。entry+120(0x78)=data ptr。entry+111(0x6F)=sub-type	IDA 静态 + frida
+0x1403d7730	COMMON TYPE HANDLER (vtable+120)：二次分发到 type-specific handler。frida 确认：数据到达此点时已解码（以 type_code+00 00 80 开头）	frida 确认
+0x1405f0580	Lodpack 构造函数：TOC→obj+0, name→obj+8, group table→obj+0x20C	IDA 静态
+0x1405f0910	Lodpack 查找：二分搜索 member(u64 hash at +8)	IDA 静态
+0x1405f1110	Lodpack hash 二分搜索：24B 条目，hash 在 offset+8，已排序	IDA 静态
+0x1405fa610	Mesh lodpack resolver：hash 从 *(*(mesh_obj+40)+0x68) 取，调 sub_1403A1820 查 lodpack	IDA 静态
+
+
+二、frida 实际抓到并验证的结构体偏移
+Entry 结构体（sub_1405AF220 参数 a1）
+偏移	类型	含义	验证状态
++0x04	u32	数据大小 (sizeFlag)	✅ frida 抓到
++0x18	char[0x38]	资源名（如 "MESH_snowchunks_0"）	✅ frida 抓到
++0x64	u32	flag（0=外部数据指针，非0=inline数据）	✅ frida 抓到
++0x6C	u8	t108（子类型高字节：0x0a=MESH, 0x01=MG, 0x02=MDL）	✅ frida 抓到
++0x6D	u8	t109 = type_code（0x0a=mesh, 0x0c=MESH/MG/MDL 组）	✅ frida 抓到
++0x6E	u8	t110	✅ frida 抓到
++0x78	ptr	数据指针（指向 raw WAD 数据）	✅ frida 抓到
+
+
+Type Code → Handler 映射（frida dispatch hook 确认）
+type_code	handler (base+offset)	用途
+0x01	base+0x597600	未知
+0x02	base+0x3d7730	common handler
+0x0a	base+0x3d7730	mesh
+0x0c	base+0x3d7730	MESH/MG/MDL 组
+0x10	base+0x4ad130	未知
+0x1a	base+0x4b50f0	未知
+其他(0x03-0x1d)	base+0x3d7730	common handler
+
+
+Type 0x0c 子类型（frida 确认 MESH/MG/MDL 三件套）
+子类型码	名称前缀	数据起始	frida 抓到的样本
+0x0a (typeCode=0xa000c)	MESH_	0c 00 0a 00 00 00 00 00...	MESH_snowchunks_0 (328B)
+0x01 (typeCode=0x1000c)	MG_	0c 00 01 00 00 00 00 00...	MG_snowchunks_0 (188B)
+0x02 (typeCode=0x1002000c)	MDL_	0c 00 02 10 00 00 00 00...	MDL_snowchunks (56B)
+
+
+Dispatch 数据格式（frida 确认）
+到达 sub_1403D7730 时数据已解码，格式：
+0c 00 00 80 00 00 00 00 ... — typeCode=0x8000000c（5351 次 dispatch 抓到）
+0c 00 0a 00 00 00 00 00 ... — typeCode=0xa000c（MESH 子类型）
+Lodpack TOC 结构（IDA 确认）
+偏移	大小	含义
+member+0x00	u32	groupIdx
+member+0x04	u32	offsetter
+member+0x08	u64	hash（二分搜索 key）
+member+0x10	u32	blockSize
+member+0x14	u32	skip
+
+
+每条目 24 字节，按 hash 排序。
+Mesh 对象 → Lodpack hash 路径
+mesh_obj → +40 → +0x68 → hash(u64) → sub_1403A1820(lodpack lookup)
+
+MCP Server	传输方式	地址	工具数	状态
+ida	URL (streamable HTTP)	http://127.0.0.1:13337/mcp	66	✅ 已验证
+x64dbg	URL (streamable HTTP)	http://127.0.0.1:3000/mcp	80	✅ 已验证
+cheat_engine	stdio bridge	ce_mcp_bridge.py	12	✅ 已验证 (CE PID=16448)
+frida	stdio bridge	frida_mcp_bridge.py	14	✅ 已验证
