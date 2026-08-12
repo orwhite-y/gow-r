@@ -711,7 +711,7 @@ ida.idb_save({})
 
 - **现象**: 按区域前缀拆分压缩包, 用 "vanaheim_zoo" 作为前缀, 但 "vanaheim_architecture_zoo" 目录没被匹配到
 - **原因**: 前缀匹配是精确字符串前缀, "vanaheim_zoo" 不是 "vanaheim_architecture_zoo" 的前缀
-- **排查**: 审计发现 3 个 anaheim_*_zoo 目录 + textures + val0* 目录被遗漏
+- **排查**: 审计发现 3 个 vanaheim_*_zoo 目录 + textures + val0* 目录被遗漏
 - **解决**: 用更宽泛的前缀 "vanaheim_" 匹配所有子目录; 或显式列出所有目录名
 - **教训**: 前缀匹配要验证覆盖率; 拆分后做全量审计 (磁盘文件数 = 所有子包文件数之和)
 
@@ -732,7 +732,7 @@ ida.idb_save({})
   7z a -t7z -mx=3 -spf2 archive.7z "dir1"   # 创建
   7z a -t7z -mx=3 -spf2 archive.7z "dir2"   # 追加
   7z a -t7z -mx=3 -spf2 archive.7z "dir3"   # 追加
-  `
+  ```
 - **教训**: 7z 的 listfile 模式在有同名子目录时不可靠; 逐目录追加 + -spf2 最稳定
 
 ### E. 关联/映射类
