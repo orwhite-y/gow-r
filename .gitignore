@@ -4,3 +4,9 @@ __pycache__/
 *.tmp
 *.log
 .compress_pid
+
+# Large output files (>5MB, too big for git)
+output/model_texture_mapping.json
+output/global_mat_index.json
+output/dds_index_complete.json
+output/dds_index.json

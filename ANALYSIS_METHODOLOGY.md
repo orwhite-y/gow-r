@@ -207,7 +207,6 @@ IDA 静态分析能看出代码结构，但看不到：
 
 ```bash
 # 必须 spawn，不能 attach
-# attach 会导致游戏反作弊检测，直接崩溃
 frida -f "E:\God of War Ragnarok\GoWR.exe" -l hook_wad.js
 ```
 
